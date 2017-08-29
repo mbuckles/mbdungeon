@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <% include ../partials/header.ejs %>
+</head>
+<body>
+  <div class="main" id="main">
+    <p id="msg">Use Arrow Keys to move</p>
+    <div class="game" id="game"></div>
+    <div id="health"></div>
+    <div id="stats"></div>
+  </div>
+ <footer>
+   <script>
+   "use strict";
+
+   function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+   function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+   function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
+   var varMaps,
+       varProps = {},
+       seen,
+       varFloor,
+       varPlayer,
+       varDungeon = 1,
+       varWeapon,
+       vcol,
+       vrow,
+       vLoc;
+   var cols = 20,
+       rows = 30,
+       varRooms = 5,
+       varEnemies = 5,
+       healthPoints = 5;
+   var visWidth = 30; // rows
+   var visHeight = 20; // cols
+   var lantern = 2;
+   var roomSize = 20;
+   var varWeapons = [{ type: "weapon", name: "Stick", damage: [0, 3] }, { type: "weapon", name: "Knife", damage: [1, 5] }, { type: "weapon", name: "Hatchet", damage: [2, 8] }, { type: "weapon", name: "Sword", damage: [3, 10] }];
+
+   reset();
+   function reset() {
+     start();
+   }
+   start();
+
+   function start() {
+     // Reset some variables
+     varProps = {}, seen = {}, varMaps = [], varFloor = {}, varWeapon = {}; //, varPlayer.col, varPlayer.row;
+     // Init empty (full of walls) map
+     for (var i = 0; i < cols; i++) {
+       var temp = [];
+       for (var j = 0; j < rows; j++) {
+         temp.push(0);
+       }
+       varMaps.push(temp);
+     }
+
+     // Function to create a randomly sized and positioned room. Overlapping allowed.
+     function getRoom(col, row) {
+       var w = Math.floor(Math.random() * 6) + 2;
+       var h = Math.floor(Math.random() * 6) + 2;
+       var col = col ? col : Math.floor(Math.random() * (cols - h - h)) + 2;
+       var row = row ? row : Math.floor(Math.random() * (rows - w - w)) + 2;
+       return { w: w, h: h, col: col, row: row };
+     }
+     // Init lastroom
+     var lastroom;
+     // Add rooms
+     for (var i = 0; i < varRooms; i++) {
+       var room = lastroom ? getRoom() : getRoom(2, 2);
+       if (lastroom) {
+         var cdir = room.col >= lastroom.col ? -1 : 1;
+         var rdir = room.row >= lastroom.row ? -1 : 1;
+         var nc = cdir === -1 ? room.col : room.col + room.h - 1;
+         var nr = rdir === -1 ? room.row : room.row + room.w - 1;
+         while (cdir === -1 && nc >= lastroom.col || cdir === 1 && nc <= lastroom.col) {
+           varMaps[nc][nr] = 1;
+           nc += cdir;
+         }
+         while (rdir === -1 && nr >= lastroom.row || rdir === 1 && nr <= lastroom.row) {
+           varMaps[nc][nr] = 1;
+           nr += rdir;
+         }
+         lastroom = room;
+       } else lastroom = room;
+       for (var a = 0; a < room.h; a++) {
+         for (var b = 0; b < room.w; b++) {
+           varMaps[a + room.col][b + room.row] = 1;
+           varFloor[a + room.col + "," + (b + room.row)] = true;
+         }
+       }
+       var vLoc = Object.keys(varFloor)[Math.floor(Math.random() * Object.keys(varFloor).length)];
+       var vrow = vLoc.split(",")[0];
+       var vcol = vLoc.split(",")[1];
+       varPlayer = {
+         col: vcol,
+         row: vrow,
+         health: 100,
+         maxh: 100,
+         weapon: "Fists",
+         damage: [0, 1],
+         exp: 0,
+         level: 1,
+         lives: 0
+       };
+     }
+
+     //  Add enemies
+     for (var k = 0; k < varEnemies; k++) {
+       var s = Object.keys(varFloor)[Math.floor(Math.random() * Object.keys(varFloor).length)];
+       while (varProps.hasOwnProperty(s) || varPlayer.col + "," + varPlayer.row === vLoc) {
+         return s;
+       }
+       var col = s.split(",")[1];
+       var row = s.split(",")[0];
+
+       var level = Math.floor(Math.random() * (varDungeon * 5)) + 1;
+       varProps[col + "," + row] = {
+         type: "enemy",
+         health: level * 2,
+         level: level,
+         exp: level * 2
+       };
+     }
+     // Add hp boxes
+     for (var k = 0; k < healthPoints; k++) {
+       var s = Object.keys(varFloor)[Math.floor(Math.random() * Object.keys(varFloor).length)];
+       while (varProps.hasOwnProperty(s)) {
+         return s;
+       }
+       var col = s.split(",")[1];
+       var row = s.split(",")[0];
+       varProps[col + "," + row] = {
+         type: "health",
+         amount: Math.floor(Math.random() * 15) + 10
+       };
+     }
+
+     if (varDungeon < 5) {
+       // Add a Door for next dungeon
+       var s = Object.keys(varFloor)[Math.floor(Math.random() * Object.keys(varFloor).length)];
+       while (varProps.hasOwnProperty(s)) {
+         return s;
+       }
+
+       var col = s.split(",")[0];
+       var row = s.split(",")[1];
+       varMaps[col][row] = 2;
+       // Add a new weapon pickup
+       s = Object.keys(varFloor)[Math.floor(Math.random() * Object.keys(varFloor).length)];
+       while (varProps.hasOwnProperty(s)) {
+         return s;
+       }
+       col = s.split(",")[1];
+       row = s.split(",")[0];
+       varProps[col + "," + row] = varWeapons[varDungeon - 1];
+       if (varDungeon > 1) {
+         // Add a new shield pickup
+         s = Object.keys(varFloor)[Math.floor(Math.random() * Object.keys(varFloor).length)];
+         while (varProps.hasOwnProperty(s)) {
+           return s;
+         }
+         col = s.split(",")[1];
+         row = s.split(",")[0];
+         varProps[col + "," + row] = { type: "shield" };
+       }
+     } else {
+       // Otherwise add THE BOSS!
+       s = Object.keys(varFloor)[Math.floor(Math.random() * Object.keys(varFloor).length)];
+       while (varProps.hasOwnProperty(s)) {
+         return s;
+       }
+       var col = s.split(",")[1];
+       var row = s.split(",")[0];
+       var level = 20;
+       varProps[col + "," + row] = {
+         type: "boss",
+         health: 750,
+         level: level,
+         exp: level * 2
+       };
+     }
+   }
+
+   var Tile = function (_React$Component) {
+     _inherits(Tile, _React$Component);
+
+     function Tile() {
+       _classCallCheck(this, Tile);
+
+       return _possibleConstructorReturn(this, _React$Component.apply(this, arguments));
+     }
+
+     Tile.prototype.setVisible = function setVisible() {
+       this.props.visible = true;
+     };
+
+     Tile.prototype.render = function render() {
+       var _props = this.props;
+       var visible = _props.visible;
+       var type = _props.type;
+       var col = _props.col;
+       var row = _props.row;
+       var vcol = _props.vcol;
+       var vrow = _props.vrow;
+
+       var type = "#000",
+           text = "",
+           border = "none",
+           size = "1em";
+       if (col == varPlayer.col && row == varPlayer.row) {
+         type = "#40E0D0";
+         text = "P";
+         visible = true;
+         border = "1px solid #222";
+       } else if (visible) {
+         switch (this.props.type) {
+           case 0:
+             type = "#333";
+             break;
+           case 1:
+             type = "#EEE";
+             break;
+           case 2:
+             type = "#D2B48C";
+             text = "D";
+         }
+         if (varProps.hasOwnProperty(col + "," + row)) {
+           var prop = varProps[this.props.col + "," + this.props.row];
+           border = "1px solid #222";
+           if (prop.type === "enemy" || prop.type === "boss") {
+             type = "#F00";
+             text = prop.health;
+             border = "1px solid #222";
+             if (prop.type === "boss") size = "0.7em";
+           } else {
+             type = "#FF0";
+             if (prop.type === "weapon") text = "W";else if (prop.type === "shield") text = "S";else if (prop.type === "health") text = "H", type = "#DDA0DD";
+           }
+         }
+       }
+       var _props2 = this.props;
+       var style = _props2.style;
+       var imax = _props2.imax;
+       var max = _props2.max;
+
+       this.props.style = {
+         top: (row - imax + visHeight) * roomSize + 35,
+         left: (col - max + visWidth) * roomSize + 10,
+         width: roomSize,
+         height: roomSize,
+         background: type,
+         border: border,
+         "font-size": size
+       };
+       return React.createElement(
+         "div",
+         { className: "tile", style: this.props.style },
+         text
+       );
+     };
+
+     return Tile;
+   }(React.Component);
+
+   var distance = function distance(i, j) {
+     if (i < varPlayer.row - lantern + 6 && i > varPlayer.row - lantern && j > varPlayer.col - lantern && j < varPlayer.col - lantern + 6) {
+       seen[i + "," + j] != true;
+       return true;
+     }
+     return seen.hasOwnProperty(i + "," + j);
+   };
+   var GameBoard = function (_React$Component2) {
+     _inherits(GameBoard, _React$Component2);
+
+     function GameBoard() {
+       _classCallCheck(this, GameBoard);
+
+       return _possibleConstructorReturn(this, _React$Component2.apply(this, arguments));
+     }
+
+     GameBoard.prototype.render = function render() {
+       var style = {
+         width: visWidth * roomSize,
+         height: visHeight * roomSize + 2
+       };
+       $("#main").width(visWidth * roomSize);
+       this.props.board = [];
+       var i = Math.floor(varPlayer.row - visHeight / 2);
+       if (i < 0) i = 0;else if (i > cols - visHeight) i = cols - visHeight;
+       var imax = visHeight + i;
+       if (imax > cols) max = cols;
+       for (; i < imax; i++) {
+         var j = Math.floor(0 + varPlayer.col - visWidth / 2);
+         if (j < 0) j = 0;else if (j > rows - visWidth) j = rows - visWidth;
+         var max = visWidth + j;
+         if (max > rows) max = rows;
+         for (; j < max; j++) {
+           this.props.board.push(React.createElement(Tile, { row: i, col: j, imax: imax, max: max, type: varMaps[i][j], visible: distance(i, j) }));
+         }
+       }
+       return React.createElement(
+         "div",
+         null,
+         React.createElement(
+           "div",
+           { style: style, id: "board" },
+           this.props.board
+         )
+       );
+     };
+
+     return GameBoard;
+   }(React.Component);
+
+   var Health = function (_React$Component3) {
+     _inherits(Health, _React$Component3);
+
+     function Health() {
+       _classCallCheck(this, Health);
+
+       return _possibleConstructorReturn(this, _React$Component3.apply(this, arguments));
+     }
+
+     Health.prototype.render = function render() {
+       var type = this.props.type;
+
+       var progressstyle = {
+         width: visWidth * roomSize
+       };
+       var style = {
+         width: varPlayer.health / varPlayer.maxh * 100 + "%"
+       };
+       return React.createElement(
+         "div",
+         { className: "progress", style: progressstyle },
+         React.createElement(
+           "div",
+           { className: "progress-bar progress-bar-" + type, role: "progressbar", "aria-valuemin": "0", "aria-valuemax": varPlayer.maxh, style: style },
+           "Player Health: " + varPlayer.health + "%"
+         )
+       );
+     };
+
+     return Health;
+   }(React.Component);
+
+   var Stats = function (_React$Component4) {
+     _inherits(Stats, _React$Component4);
+
+     function Stats() {
+       _classCallCheck(this, Stats);
+
+       return _possibleConstructorReturn(this, _React$Component4.apply(this, arguments));
+     }
+
+     Stats.prototype.render = function render() {
+       return React.createElement(
+         "div",
+         { className: "stats" },
+         "Dungeon: ",
+         varDungeon,
+         ", Shields: ",
+         varPlayer.lives,
+         ", ",
+         varPlayer.weapon,
+         ": ",
+         varPlayer.damage[0],
+         "-",
+         varPlayer.damage[1],
+         " dmg, XP: ",
+         varPlayer.exp,
+         ", Level: ",
+         varPlayer.level,
+         ", Explored: ",
+         Math.round(Object.keys(seen).length / (rows * cols) * 100),
+         "%"
+       );
+     };
+
+     return Stats;
+   }(React.Component);
+
+   var game = ReactDOM.render(React.createElement(GameBoard, null), $("#game")[0]);
+   var health = ReactDOM.render(React.createElement(Health, { type: "success" }), $("#health")[0]);
+   var stats = ReactDOM.render(React.createElement(Stats, null), $("#stats")[0]);
+
+   // GAME MOVEMENT
+
+   $(document).on("keydown", function (e) {
+     switch (e.keyCode) {
+       case 38:
+         move(varPlayer.col, varPlayer.row - 1);
+         break;
+       case 40:
+         move(varPlayer.col, varPlayer.row + 1);
+         break;
+       case 37:
+         move(varPlayer.col - 1, varPlayer.row);
+         break;
+       case 39:
+         move(varPlayer.col + 1, varPlayer.row);
+     }
+     game.forceUpdate();
+   });
+   game.forceUpdate();
+   function move(col, row) {
+     if (check(col, row)) {
+       varPlayer.col = col;
+       varPlayer.row = row;
+       if (varMaps[varPlayer.row][varPlayer.col] === 2) {
+         varDungeon++;
+         cols += 10;
+         rows += 10;
+         varRooms += 20;
+         varEnemies += 5;
+         healthPoints += 5;
+         start();
+       }
+       if (varProps.hasOwnProperty(varPlayer.col + "," + varPlayer.row)) {
+         var prop = varProps[varPlayer.col + "," + varPlayer.row];
+         if (prop.type === "weapon") {
+           varPlayer.weapon = prop.name;
+           varPlayer.damage = prop.damage.slice();
+         } else if (prop.type === "health") {
+           varPlayer.health += prop.amount;
+           if (varPlayer.health > varPlayer.maxh) varPlayer.health = varPlayer.maxh;
+           updateHealth();
+         } else if (prop.type === "shield") {
+           varPlayer.lives++;
+         }
+         delete varProps[varPlayer.col + "," + varPlayer.row];
+       }
+       game.forceUpdate();
+       stats.forceUpdate();
+     } else if (varProps.hasOwnProperty(col + "," + row) && (varProps[col + "," + row].type === "enemy" || varProps[col + "," + row].type === "boss")) {
+       var prop = varProps[col + "," + row];
+       varPlayer.health -= Math.floor(Math.random() * (prop.level * 2 + 1));
+       prop.health -= Math.floor(Math.random() * (varPlayer.level + varPlayer.damage[1] - varPlayer.damage[0] + 1)) + varPlayer.damage[0];
+       if (prop.health <= 0) {
+         varPlayer.exp += prop.exp;
+         checkLevel();
+         if (prop.type === "boss") {
+           message("You Win!");
+           setTimeout(reset, 1000);
+         } else {
+           delete varProps[col + "," + row];
+           stats.forceUpdate();
+         }
+       }
+       updateHealth();
+       game.forceUpdate();
+     }
+   }
+   function check(col, row) {
+     return !(varProps.hasOwnProperty(col + "," + row) && (varProps[col + "," + row].type === "enemy" || varProps[col + "," + row].type === "boss")) && !(varMaps[row][col] === 0);
+   }
+   function updateHealth() {
+     if (varPlayer.health <= 0) {
+       varPlayer.lives--;
+       if (varPlayer.lives < 0) {
+         message("Game Over!");
+         varPlayer.col = -1, varPlayer.row = -1;
+         setTimeout(reset, 1000);
+       } else {
+         message("You died!");
+         varPlayer.health = varPlayer.maxh;
+         varPlayer.col = 2, varPlayer.row = 2;
+       }
+       stats.forceUpdate();
+     }
+     var h = varPlayer.health / varPlayer.maxh * 100; // Percentage
+     if (h <= 20) health.props.type = "danger";else if (h <= 50) health.props.type = "warning";else health.props.type = "success";
+     health.forceUpdate();
+   }
+   function checkLevel() {
+     var needed = varPlayer.level * 5;
+     if (varPlayer.exp >= needed) varPlayer.level++;
+   }
+   function message(msg) {
+     $("#msg").text(msg);
+     $("#msg").addClass("zoomed");
+     setTimeout(function () {
+       $("#msg").text("Arrow Keys to move");
+       $("#msg").removeClass();
+       game.forceUpdate();
+     }, 1000);
+   }
+   </script>
+ </footer>
+</html>
+</body>
